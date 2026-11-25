@@ -17,60 +17,42 @@ def get_signal():
     try:
         df = yf.download(PAIR, period="2d", interval="5m", progress=False, auto_adjust=True)
         if len(df) < 60:
-            return {"signal":"Loading...", "time": datetime.now(SAST).strftime("%H:%M:%S")}
-        
-        # Fix: flatten if multi-index from yfinance
+            return {"signal":"Loading...", "score":0, "level":"blue", "time": datetime.now(SAST).strftime("%H:%M:%S")}
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-        
-        close = df['Close']
-        high = df['High']
-        low = df['Low']
-        
+        close = df['Close']; high = df['High']; low = df['Low']
         df['EMA20'] = close.ewm(span=20).mean()
         df['EMA50'] = close.ewm(span=50).mean()
         df['ATR'] = (high - low).rolling(14).mean()
-        
         delta = close.diff()
         gain = delta.where(delta>0, 0).rolling(14).mean()
         loss = -delta.where(delta<0, 0).rolling(14).mean()
         df['RSI'] = 100 - (100 / (1 + gain/loss))
-        
-        last_close = float(close.iloc[-1])
-        last_ema20 = float(df['EMA20'].iloc[-1])
-        last_ema50 = float(df['EMA50'].iloc[-1])
-        last_atr = float(df['ATR'].iloc[-1])
-        last_rsi = float(df['RSI'].iloc[-1])
-        
+        last_close = float(close.iloc[-1]); last_ema20 = float(df['EMA20'].iloc[-1]); last_ema50 = float(df['EMA50'].iloc[-1]); last_atr = float(df['ATR'].iloc[-1]); last_rsi = float(df['RSI'].iloc[-1])
         atr_pips = last_atr * 10000
         ema_gap = abs(last_ema20 - last_ema50) / last_close * 10000
         ema_bull = last_ema20 > last_ema50
-        
-        signal = "NO TRADE"
-        score = 0
+        signal = "NO TRADE"; score = 0
         if ema_bull and 52 < last_rsi < 75:
-            signal = "BUY"
-            score = ema_gap + (last_rsi-50) + atr_pips*0.5
+            signal = "BUY"; score = ema_gap + (last_rsi-50) + atr_pips*0.5
         elif not ema_bull and 25 < last_rsi < 48:
-            signal = "SELL"
-            score = ema_gap + (50-last_rsi) + atr_pips*0.5
-        
-        if atr_pips > 10: conf = "STRONG - Good for 0.4 lots $120"
-        elif atr_pips > 6: conf = "NORMAL - Can hit 30 pips"
-        else: conf = "LOW VOL - Still valid"
-        
-        return {
-            "signal": signal,
-            "price": round(last_close,5),
-            "rsi": round(last_rsi,1),
-            "atr": round(atr_pips,1),
-            "ema_gap": round(ema_gap,1),
-            "conf": conf,
-            "score": round(score,1),
-            "time": datetime.now(SAST).strftime("%H:%M:%S")
-        }
+            signal = "SELL"; score = ema_gap + (50-last_rsi) + atr_pips*0.5
+
+        # COLOR LOGIC YOU ASKED
+        if score >= 25 and atr_pips >= 6:
+            level = "best"   # dark green
+            conf = "BEST - Take 0.4 lots"
+        elif score >= 15 and atr_pips >= 4:
+            level = "ok"     # blue
+            conf = "OK - Good entry"
+        else:
+            level = "watch"  # red
+            conf = "OK BUT WATCH - Low vol / weak"
+
+        if signal == "NO TRADE": level = "watch"; conf = "WAIT"
+        return {"signal": signal, "price": round(last_close,5), "rsi": round(last_rsi,1), "atr": round(atr_pips,1), "ema_gap": round(ema_gap,1), "conf": conf, "score": round(score,1), "level": level, "time": datetime.now(SAST).strftime("%H:%M:%S")}
     except Exception as e:
-        return {"signal": "RETRY", "error": str(e)[:100], "time": datetime.now(SAST).strftime("%H:%M:%S")}
+        return {"signal": "RETRY", "score":0, "level":"watch", "error": str(e)[:80], "time": datetime.now(SAST).strftime("%H:%M:%S")}
 
 def update_live():
     res = get_signal()
@@ -78,33 +60,46 @@ def update_live():
     latest_scan["last_update"] = res.get("time","")
     if res.get("signal") in ["BUY","SELL"]:
         now = datetime.now(SAST)
-        if 9 <= now.hour < 10:
-            best_10am.append(res)
-            latest_scan["10am_best"] = sorted(best_10am, key=lambda x: x['score'], reverse=True)[0]
-        if 14 <= now.hour < 15:
-            best_230pm.append(res)
-            latest_scan["230pm_best"] = sorted(best_230pm, key=lambda x: x['score'], reverse=True)[0]
+        if 9 <= now.hour < 10: best_10am.append(res); latest_scan["10am_best"] = sorted(best_10am, key=lambda x: x['score'], reverse=True)[0]
+        if 14 <= now.hour < 15: best_230pm.append(res); latest_scan["230pm_best"] = sorted(best_230pm, key=lambda x: x['score'], reverse=True)[0]
 
-def reset_10am(): 
+def reset_10am():
     global best_10am; best_10am=[]
-def reset_230pm(): 
+def reset_230pm():
     global best_230pm; best_230pm=[]
 
 @app.route("/")
 def home():
+    def card_html(data, title):
+        if not data: return f"<div class='card'><h2>{title}</h2><span class='watch'>Waiting for window</span></div>"
+        lvl = data.get('level','watch')
+        return f"<div class='card'><h2>{title}</h2><div class='{lvl}'><b>{data.get('signal')} @ {data.get('price')} | {data.get('conf')}</b><br>Score: {data.get('score')} | RSI: {data.get('rsi')} | ATR: {data.get('atr')} pips | EMA gap: {data.get('ema_gap')}<br><small>{data.get('time')}</small></div></div>"
+
     cs = latest_scan["current_signal"] or {}
-    c10 = latest_scan["10am_best"]
-    c230 = latest_scan["230pm_best"]
-    color = "buy" if str(cs.get('signal'))=="BUY" else "sell" if str(cs.get('signal'))=="SELL" else ""
+    lvl = cs.get('level','watch')
     return f"""
     <html><head><meta name='viewport' content='width=device-width, initial-scale=1'>
-    <style>body{{font-family:sans-serif;background:#111;color:#fff;padding:20px}} .buy{{color:#0f0;font-size:26px}} .sell{{color:#f00;font-size:26px}} .card{{background:#222;padding:15px;border-radius:10px;margin:10px 0}}</style></head>
+    <style>
+    body{{font-family:sans-serif;background:#111;color:#fff;padding:18px}}
+    .card{{background:#222;padding:14px;border-radius:12px;margin:12px 0;border-left:6px solid #444}}
+    .best{{color:#00a651; font-weight:800; font-size:20px}} /* dark green */
+    .ok{{color:#1e90ff; font-weight:700; font-size:20px}} /* blue */
+    .watch{{color:#ff3b30; font-weight:700; font-size:20px}} /* red */
+    small{{color:#aaa}}
+    </style></head>
     <body>
     <h1>PWP EURUSD Bot - 0.4 Lots</h1>
-    <div class='card'>Last Update: {latest_scan['last_update']}<br>Current: <span class='{color}'><b>{cs}</b></span><br>TP $120 (30pips) SL $70 (17.5pips)</div>
-    <div class='card'><h2>10AM Best</h2><b>{c10 if c10 else 'Waiting for 09:40 window'}</b></div>
-    <div class='card'><h2>2:30PM Best</h2><b>{c230 if c230 else 'Waiting for 14:10 window'}</b></div>
-    <p><a href='/api' style='color:#0ff'>View JSON API</a></p>
+    <div class='card' style='border-left-color:{'#00a651' if lvl=='best' else '#1e90ff' if lvl=='ok' else '#ff3b30'}'>
+    Last Update: {latest_scan['last_update']}<br>
+    <div class='{lvl}'>Current: {cs.get('signal','...')} @ {cs.get('price','')} - {cs.get('conf','')}<br>Score {cs.get('score','')} | RSI {cs.get('rsi','')} | ATR {cs.get('atr','')} | {cs.get('time','')}</div>
+    TP $120 (30pips) SL $70 (17.5pips)
+    </div>
+    {card_html(latest_scan['10am_best'], '10AM Best')}
+    {card_html(latest_scan['230pm_best'], '2:30PM Best')}
+    <p><a href='/api' style='color:#0ff'>View JSON API</a> | Auto refresh 30s<br><br>
+    <span class='best'>■ Dark Green = BEST</span> - take it<br>
+    <span class='ok'>■ Blue = OK</span> - good entry<br>
+    <span class='watch'>■ Red = OK BUT WATCH</span> - low vol, be careful</p>
     <script>setTimeout(()=>location.reload(),30000)</script>
     </body></html>
     """
@@ -118,6 +113,4 @@ sched.add_job(reset_10am, 'cron', hour=9, minute=30)
 sched.add_job(reset_230pm, 'cron', hour=14, minute=0)
 sched.start()
 update_live()
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+if __name__ == "__main__": app.run(host="0.0.0.0", port=10000)
