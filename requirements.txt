@@ -1,0 +1,4 @@
+apscheduler
+yfinance
+pytz
+pandas
