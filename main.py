@@ -94,28 +94,33 @@ def home():
         if not data:
             return "<div class='block no_trade'>Loading...</div>"
         lvl = data.get('level','no_trade')
-        colors = {"best":"#00e676","ok":"#1e90ff","watch":"#ffca28","risky":"#ff5252","no_trade":"#555"}
-        bcol = colors.get(lvl,"#555")
+        cfg_map = {
+            "best": {"col":"#00E676", "bg":"#00E67622", "icon":"✅", "text":"DEFINITE"},
+            "ok": {"col":"#2979FF", "bg":"#2979FF22", "icon":"▶️", "text":"NORMAL"},
+            "watch": {"col":"#FFAB00", "bg":"#FFAB0022", "icon":"⏸️", "text":"HOLD PROFIT"},
+            "risky": {"col":"#FF3D57", "bg":"#FF3D5722", "icon":"⚠️", "text":"RISKY"},
+            "no_trade": {"col":"#616161", "bg":"#212121", "icon":"🚫", "text":"NO TRADE"}
+        }
+        c = cfg_map.get(lvl, cfg_map["no_trade"])
         return f"""
-        <div class='block {lvl}' style='border-color:{bcol}'>
-            <div class='header'><h2>{data['pair']}</h2><span class='badge {lvl}' style='background:{bcol}'>{data['signal']}</span></div>
-            <div class='score'>Score<br><b style='color:{bcol}'>{data.get('score',0)}</b></div>
+        <div class='block {lvl}' style='border-color:{c['col']};background:{c['bg']}'>
+            <div class='header'><h2>{data['pair']}</h2><span class='badge' style='background:{c['col']};color:{"#000" if lvl in ["best","watch"] else "#fff"}'>{c['icon']} {c['text']}</span></div>
+            <div class='sig'>{data['signal']} @ {data.get('price','')}</div>
+            <div class='score' style='color:{c['col']}'><b>{data.get('score',0)}</b><br><small>SCORE</small></div>
             <div class='grid'>
-                <div><small>Last Update</small><br>{data.get('time','')}</div>
-                <div><small>Price</small><br>{data.get('price','')}</div>
-                <div><small>RSI</small><br>{data.get('rsi','')}</div>
-                <div><small>ATR</small><br>{data.get('atr','')}</div>
+                <div><small>Time</small><br>{data.get('time','')}</div>
+                <div><small>RSI / ATR</small><br>{data.get('rsi','')} / {data.get('atr','')}</div>
             </div>
             <div class='risk'>
                 <small>{data.get('conf','')}</small><br>
-                <span class='sl'>SL ${data['sl']}</span> <span class='tp' style='border-color:{bcol};color:{bcol}'>TP ${data['tp']}</span>
+                <span class='sl'>SL ${data['sl']}</span> <span class='tp'>TP ${data['tp']}</span>
                 <br><small>EMA gap {data.get('ema_gap','')}</small>
             </div>
-            <div class='dots'>
-                <span class='dot {"on" if lvl=="best" else ""}' style='background:#00e676'></span>
-                <span class='dot {"on" if lvl=="ok" else ""}' style='background:#1e90ff'></span>
-                <span class='dot {"on" if lvl=="watch" else ""}' style='background:#ffca28'></span>
-                <span class='dot {"on" if lvl=="risky" else ""}' style='background:#ff5252'></span>
+            <div class='big-dots'>
+                <div class='big-dot {"active" if lvl=="best" else ""}' style='border-color:#00E676'><span style='background:#00E676'></span><label>DEFINITE</label></div>
+                <div class='big-dot {"active" if lvl=="ok" else ""}' style='border-color:#2979FF'><span style='background:#2979FF'></span><label>NORMAL</label></div>
+                <div class='big-dot {"active" if lvl=="watch" else ""}' style='border-color:#FFAB00'><span style='background:#FFAB00'></span><label>HOLD</label></div>
+                <div class='big-dot {"active" if lvl=="risky" else ""}' style='border-color:#FF3D57'><span style='background:#FF3D57'></span><label>RISKY</label></div>
             </div>
         </div>
         """
@@ -123,29 +128,32 @@ def home():
     return f"""
     <html><head><meta name='viewport' content='width=device-width, initial-scale=1'>
     <style>
-    body{{font-family:sans-serif;background:#0e1116;color:#fff;padding:10px;margin:0}}
-    h1{{text-align:center;margin:6px 0}} .sub{{text-align:center;color:#aaa;font-size:12px;margin-bottom:10px}}
-    .container{{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}}
-    .block{{background:#1a1f2b;border-radius:16px;padding:14px;width:300px;border:2px solid #333;box-shadow:0 0 8px #000}}
-    .header{{display:flex;justify-content:space-between;align-items:center}} .header h2{{margin:0;font-size:20px}}
-    .badge{{padding:5px 10px;border-radius:7px;font-weight:800;font-size:11px;color:#000}} .badge.risky,.badge.no_trade{{color:#fff}}
-    .score{{text-align:center;margin:12px 0}} .score b{{font-size:50px}}
-    .grid{{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#11151e;padding:8px;border-radius:10px;font-size:13px;text-align:center}} .grid small{{color:#888;font-size:10px}}
-    .risk{{background:#11151e;margin-top:8px;padding:8px;border-radius:10px;text-align:center;font-size:13px}} .sl{{color:#ff5252;border:1px solid #ff5252;padding:3px 8px;border-radius:7px;margin:3px}} .tp{{padding:3px 8px;border-radius:7px;margin:3px;border:1px solid}}
-    .dots{{display:flex;gap:6px;justify-content:center;margin-top:10px}} .dot{{width:14px;height:14px;border-radius:50%;background:#333;opacity:0.25}} .dot.on{{opacity:1;box-shadow:0 0 6px currentColor}}
-    .legend{{text-align:center;margin-top:12px;font-size:12px;color:#ccc}}
+    body{{font-family:sans-serif;background:#080a0f;color:#fff;padding:10px;margin:0}}
+    h1{{text-align:center;margin:8px 0}} .sub{{text-align:center;color:#aaa;font-size:12px;margin-bottom:12px}}
+    .container{{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}}
+    .block{{border-radius:20px;padding:16px;width:320px;border:3px solid #333;box-shadow:0 4px 20px #000}}
+    .header{{display:flex;justify-content:space-between;align-items:center}} .header h2{{margin:0;font-size:22px}}
+    .badge{{padding:8px 14px;border-radius:10px;font-weight:900;font-size:13px;letter-spacing:0.5px}}
+    .sig{{text-align:center;margin:8px 0;font-size:14px;color:#ccc}}
+    .score{{text-align:center;margin:8px 0}} .score b{{font-size:58px;line-height:1}} .score small{{font-size:11px;color:#aaa}}
+    .grid{{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#0e121b;padding:10px;border-radius:12px;font-size:14px;text-align:center;margin-top:8px}} .grid small{{color:#777;font-size:10px}}
+    .risk{{background:#0e121b;margin-top:10px;padding:10px;border-radius:12px;text-align:center;font-size:13px}} .sl{{color:#FF3D57;border:1px solid #FF3D57;padding:4px 10px;border-radius:8px;margin:4px;display:inline-block}} .tp{{color:#00E676;border:1px solid #00E676;padding:4px 10px;border-radius:8px;margin:4px;display:inline-block}}
+    .big-dots{{display:flex;gap:6px;justify-content:space-between;margin-top:14px}}
+    .big-dot{{flex:1;text-align:center;border:2px solid #333;border-radius:12px;padding:8px 2px;background:#111;opacity:0.3;transition:0.2s}} .big-dot.active{{opacity:1;transform:scale(1.08);box-shadow:0 0 14px currentColor;background:#1e1e1e;border-width:3px}}
+    .big-dot span{{display:block;width:26px;height:26px;border-radius:50%;margin:0 auto 5px auto}} .big-dot label{{font-size:8.5px;font-weight:900;display:block;letter-spacing:0.5px}}
+    .legend{{text-align:center;margin-top:14px;font-size:11px;color:#999;line-height:1.6}}
     </style></head>
     <body>
     <h1>PWP Bot Scanner - 3 Markets</h1>
-    <div class='sub'>Live • {latest_scan['last_update']} SAST • 3/3 pairs • 0.4 Lots</div>
+    <div class='sub'>Live • {latest_scan['last_update']} SAST • 0.4 Lots • Big Dots Edition</div>
     <div class='container'>
         {block_html(pairs.get("USDCHF=X"))}
         {block_html(pairs.get("EURUSD=X"))}
         {block_html(pairs.get("USDJPY=X"))}
     </div>
     <div class='legend'>
-        🟢 Green (60+) = DEFINITE TRADE | 🔵 Blue (35+) = NORMAL ENTRY | 🟡 Yellow (20+) = IN PROFIT? HOLD<br>
-        🔴 Red (10+) = RISKY BUT TRADE | ⚫ Grey (<10) = NO TRADE<br>
+        ✅ GREEN #00E676 = DEFINITE | ▶️ BLUE #2979FF = NORMAL | ⏸️ AMBER #FFAB00 = HOLD IF IN PROFIT | ⚠️ RED #FF3D57 = RISKY<br>
+        Big dots light up + icon + text - no more green/yellow confusion<br>
         5016: CHF+EUR $70 TP | 5100: JPY $120 TP
     </div>
     <script>setTimeout(()=>location.reload(),60000)</script>
