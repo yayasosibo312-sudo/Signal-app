@@ -9,8 +9,9 @@ app = Flask(__name__)
 SAST = pytz.timezone('Africa/Johannesburg')
 
 PAIRS_CONFIG = {
-    "USDCHF=X": {"label": "USDCHF", "tp": 70, "sl": 70},
-    "EURUSD=X": {"label": "EURUSD", "tp": 70, "sl": 70},
+    "EURUSD=X": {"label": "EURUSD", "tp": 70, "sl": 60},
+    "AUDUSD=X": {"label": "AUDUSD", "tp": 70, "sl": 60},
+    "USDCAD=X": {"label": "USDCAD", "tp": 70, "sl": 65},
     "USDJPY=X": {"label": "USDJPY", "tp": 120, "sl": 70},
 }
 
@@ -34,33 +35,38 @@ def get_signal_for_pair(pair_code):
         df['RSI'] = 100 - (100 / (1 + gain/loss))
         last_close = float(close.iloc[-1]); last_ema20 = float(df['EMA20'].iloc[-1]); last_ema50 = float(df['EMA50'].iloc[-1]); last_atr = float(df['ATR'].iloc[-1]); last_rsi = float(df['RSI'].iloc[-1])
         is_jpy = "JPY" in pair_code
-        is_chf = "CHF" in pair_code
         atr_pips = last_atr * 100 if is_jpy else last_atr * 10000
         ema_gap = abs(last_ema20 - last_ema50) / last_close * (100 if is_jpy else 10000)
         ema_bull = last_ema20 > last_ema50
         ema_bear = last_ema20 < last_ema50
         signal = "NO TRADE"; base_score = 0
-        if is_chf:
-            if ema_bull and 40 < last_rsi < 70:
-                signal = "BUY"; base_score = 20 + ema_gap*3 + (last_rsi-40)*0.5 + atr_pips*2
-            elif ema_bear and 30 < last_rsi < 60:
-                signal = "SELL"; base_score = 20 + ema_gap*3 + (60-last_rsi)*0.5 + atr_pips*2
-        elif is_jpy:
-            if ema_bull and 40 < last_rsi < 75:
-                signal = "BUY"; base_score = 15 + ema_gap*2.5 + (last_rsi-40)*0.6 + atr_pips*1.5
-            elif ema_bear and 25 < last_rsi < 60:
-                signal = "SELL"; base_score = 15 + ema_gap*2.5 + (60-last_rsi)*0.6 + atr_pips*1.5
-        else:
+        label = cfg["label"]
+        if label == "EURUSD":
             if ema_bull and 42 < last_rsi < 72:
                 signal = "BUY"; base_score = 18 + ema_gap*2.8 + (last_rsi-42)*0.5 + atr_pips*1.8
             elif ema_bear and 28 < last_rsi < 58:
                 signal = "SELL"; base_score = 18 + ema_gap*2.8 + (58-last_rsi)*0.5 + atr_pips*1.8
+        elif label == "AUDUSD":
+            if ema_bull and 40 < last_rsi < 70:
+                signal = "BUY"; base_score = 20 + ema_gap*3.0 + (last_rsi-40)*0.5 + atr_pips*2.0
+            elif ema_bear and 30 < last_rsi < 60:
+                signal = "SELL"; base_score = 20 + ema_gap*3.0 + (60-last_rsi)*0.5 + atr_pips*2.0
+        elif label == "USDCAD":
+            if ema_bull and 40 < last_rsi < 70:
+                signal = "BUY"; base_score = 22 + ema_gap*3.2 + (last_rsi-40)*0.6 + atr_pips*2.2
+            elif ema_bear and 30 < last_rsi < 60:
+                signal = "SELL"; base_score = 22 + ema_gap*3.2 + (60-last_rsi)*0.6 + atr_pips*2.2
+        else:
+            if ema_bull and 40 < last_rsi < 75:
+                signal = "BUY"; base_score = 15 + ema_gap*2.5 + (last_rsi-40)*0.6 + atr_pips*1.5
+            elif ema_bear and 25 < last_rsi < 60:
+                signal = "SELL"; base_score = 15 + ema_gap*2.5 + (60-last_rsi)*0.6 + atr_pips*1.5
         score = round(base_score,1)
         if signal == "NO TRADE":
             level = "no_trade"; conf = "NO TRADE"; score = 0
         elif score >= 60:
             level = "best"; conf = f"{signal} - DEFINITE TRADE"
-        elif score >= 35:
+        elif score >= 38:
             level = "ok"; conf = f"{signal} - NORMAL ENTRY"
         elif score >= 20:
             level = "watch"; conf = f"{signal} - IN PROFIT? HOLD"
@@ -144,17 +150,18 @@ def home():
     .legend{{text-align:center;margin-top:14px;font-size:11px;color:#999;line-height:1.6}}
     </style></head>
     <body>
-    <h1>PWP Bot Scanner - 3 Markets</h1>
-    <div class='sub'>Live • {latest_scan['last_update']} SAST • 0.4 Lots • Big Dots Edition</div>
+    <h1>PWP Bot Scanner - 4 Markets Smooth</h1>
+    <div class='sub'>Live • {latest_scan['last_update']} SAST • 0.01 Lots • Big Dots + Icons • All trades shown - you skip night</div>
     <div class='container'>
-        {block_html(pairs.get("USDCHF=X"))}
         {block_html(pairs.get("EURUSD=X"))}
+        {block_html(pairs.get("AUDUSD=X"))}
+        {block_html(pairs.get("USDCAD=X"))}
         {block_html(pairs.get("USDJPY=X"))}
     </div>
     <div class='legend'>
         ✅ GREEN #00E676 = DEFINITE | ▶️ BLUE #2979FF = NORMAL | ⏸️ AMBER #FFAB00 = HOLD IF IN PROFIT | ⚠️ RED #FF3D57 = RISKY<br>
-        Big dots light up + icon + text - no more green/yellow confusion<br>
-        5016: CHF+EUR $70 TP | 5100: JPY $120 TP
+        Same colours as before + icons + 26px big dots with labels<br>
+        YOUR RULE: 10:00-16:00 SAST only - you skip night manually, bot shows all
     </div>
     <script>setTimeout(()=>location.reload(),60000)</script>
     </body></html>
